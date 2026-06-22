@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from xgboost_ts_ashare.labels import build_labels
+from ts_ml.labels import build_labels
 
 
 def make_ohlcv(n_rows: int = 10) -> pd.DataFrame:

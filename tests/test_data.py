@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xgboost_ts_ashare.config import Settings
+from ts_ml.config import Settings
 
 
 def test_data_lake_root_path_exists() -> None:
@@ -63,7 +63,7 @@ def test_industry_join_on_real_data() -> None:
     """Loading real data should produce an 'industry' column."""
     s = Settings(symbol="000001.SZ", start_date="20250101", join_industry=True)
 
-    from xgboost_ts_ashare.data import load_data
+    from ts_ml.data import load_data
     df = load_data(s)
     assert "industry" in df.columns, "industry column missing after join"
     assert df["industry"].iloc[0] != "其他", "000001.SZ should have a real industry"

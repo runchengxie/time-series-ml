@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from xgboost_ts_ashare.features import FEATURE_COLUMNS
-from xgboost_ts_ashare.industry import (
+from ts_ml.features import FEATURE_COLUMNS
+from ts_ml.industry import (
     compute_industry_ic_reduction,
     neutralize_industry,
 )

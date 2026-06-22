@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from xgboost_ts_ashare.features import FEATURE_COLUMNS, build_features
+from ts_ml.features import FEATURE_COLUMNS, build_features
 
 
 def make_ohlcv(n_rows: int = 200) -> pd.DataFrame:
