@@ -3,7 +3,7 @@
 ## 安装和依赖
 
 ```bash
-cd ~/code/xgboost-ashare
+cd ~/code/time-series-ml
 uv sync --dev
 source .venv/bin/activate
 ```
@@ -15,6 +15,7 @@ source .venv/bin/activate
 - `xgboost>=2.0` — 主模型
 - `jupyterlab, matplotlib, seaborn` — 分析和可视化（dev）
 - `pytest>=8.0, ruff>=0.6, pyright>=1.1` — 测试和代码质量（dev）
+- `mlflow>=2.14` — 实验追踪（dev）
 
 ## 数据前置
 
@@ -48,6 +49,7 @@ source .venv/bin/activate
 | `--compare-models` | `False` | 多模型对比 |
 | `--backtest` | `False` | Walk-forward 回测 |
 | `--backtest-cost-bps` | `5.0` | 往返交易成本（基点） |
+| `--regime` | `False` | 市场状态分拆统计 |
 | `--config` | `""` | YAML 配置文件路径 |
 
 ## 典型工作流
@@ -55,24 +57,25 @@ source .venv/bin/activate
 ### 1. 单标的快速验证
 
 ```bash
-python -m xgboost_ashare.cli --symbol 000001.SZ --start-date 20200101
+ts-ml --symbol 000001.SZ --start-date 20200101
 ```
 
 ### 2. 单标的深度分析
 
 ```bash
-python -m xgboost_ashare.cli \
+ts-ml \
   --symbol 000001.SZ \
   --calibrate \
   --optimize-threshold \
   --compare-models \
-  --backtest
+  --backtest \
+  --regime
 ```
 
 ### 3. 多标的横向比较
 
 ```bash
-python -m xgboost_ashare.cli \
+ts-ml \
   --symbols 000001.SZ,600000.SH,000858.SZ,600519.SH,601318.SH \
   --calibrate \
   --prob-threshold 0.55 \
@@ -92,7 +95,17 @@ compare_models: true
 ```
 
 ```bash
-python -m xgboost_ashare.cli --config my_run.yml
+ts-ml --config my_run.yml
+```
+
+### 5. 多标的 + 行业中性化 + 市场状态分析
+
+```bash
+ts-ml \
+  --symbols 000001.SZ,600000.SH,000858.SZ,600519.SH,601318.SH \
+  --neutralize-industry \
+  --backtest \
+  --regime
 ```
 
 ## 常见问题
@@ -108,3 +121,13 @@ python -m xgboost_ashare.cli --config my_run.yml
 ### Q: 概率校准和阈值优化冲突吗？
 
 不冲突。`--calibrate` 校准 predict_proba，`--optimize-threshold` 用验证集搜最优分类阈值。两者可以同时用。
+
+### Q: MLflow runs 在哪里看？
+
+本地存储在 `./mlruns/` 目录。启动 MLflow UI：
+
+```bash
+mlflow ui --backend-store-uri file://./mlruns
+```
+
+浏览器打开 `http://localhost:5000` 即可查看所有实验记录。

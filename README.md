@@ -75,6 +75,15 @@ ruff check .       # Lint
 pyright            # 类型检查
 ```
 
+## 文档
+
+| 文档 | 内容 |
+|------|------|
+| [docs/methodology.md](docs/methodology.md) | 策略算法、特征体系、模型架构、回测方法论、TCA 假设 |
+| [docs/validation.md](docs/validation.md) | 防过拟合措施、Purge/Embargo、IC/ICIR、检验清单、预警信号 |
+| [docs/roadmap.md](docs/roadmap.md) | 已完成 / 待完成功能清单 |
+| [docs/runbook.md](docs/runbook.md) | 安装、数据前置、典型工作流、常见问题 |
+
 ## 许可证
 
 MIT
