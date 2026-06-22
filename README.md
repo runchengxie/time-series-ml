@@ -81,7 +81,7 @@ pyright            # 类型检查
 |------|------|
 | [docs/methodology.md](docs/methodology.md) | 策略算法、特征体系、模型架构、回测方法论、TCA 假设 |
 | [docs/validation.md](docs/validation.md) | 防过拟合措施、Purge/Embargo、IC/ICIR、检验清单、预警信号 |
-| [docs/roadmap.md](docs/roadmap.md) | 已完成 / 待完成功能清单 |
+| [docs/capabilities.md](docs/capabilities.md) | 功能清单：数据处理、特征、模型、验证、回测、工程化 |
 | [docs/limitations.md](docs/limitations.md) | 测试覆盖缺口、策略局限、数据局限、TCA 假设局限 |
 | [docs/runbook.md](docs/runbook.md) | 安装、数据前置、典型工作流、常见问题 |
 
