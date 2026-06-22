@@ -44,6 +44,7 @@ def start_tracking(
     if _MLFLOW is None:
         return
 
+    os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
     tracking_uri = os.environ.get(
         "MLFLOW_TRACKING_URI",
         f"file://{_project_root() / 'mlruns'}",

@@ -35,7 +35,7 @@
 - [x] 因子相关性矩阵：`metrics.py — compute_factor_correlation()`
 - [x] IC 衰减曲线：`metrics.py — compute_ic_decay()`
 - [x] 行业中性：申万行业分类 + 截面中性化
-- [ ] 市场状态分类：牛/熊/震荡市分别建模
+- [x] 市场状态分类：`regime.py` — MA20/MA60 + 偏离阈值，回测按状态分拆统计
 
 ## 测试覆盖缺口
 

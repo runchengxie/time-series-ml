@@ -36,6 +36,7 @@ from .metrics import (
     print_report,
 )
 from .model import compare_models, train_model
+from .regime import classify_regime, compute_market_proxy
 from .tracking import end_tracking, log_backtest, log_metrics, start_tracking
 
 
@@ -106,6 +107,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--backtest-cost-bps", type=float, default=5.0)
 
+    # Regime
+    parser.add_argument(
+        "--regime", action="store_true",
+        help="Compute market regime (bull/range/bear) and report per-regime backtest stats",
+    )
+
     # Config
     parser.add_argument("--config", type=str, default="", help="Path to YAML config file")
 
@@ -159,6 +166,24 @@ def _print_backtest(bt: dict[str, Any]) -> None:
     print(f"  Signal Rate:     {sr:.1%}")
     print(f"  Prob Threshold:  {bt.get('prob_threshold_used', 0.50):.2f}")
 
+    # Regime statistics
+    regime_stats = bt.get("regime_stats")
+    if regime_stats:
+        print("\n-- Per-Regime Performance --")
+        regime_names = {1: "Bull", 0: "Range", -1: "Bear"}
+        header = f"  {'Regime':<8} {'Trades':>7} {'Win Rate':>9} {'Ret':>8} {'Sharpe':>7}"
+        print(header)
+        for regime in [1, 0, -1]:
+            s = regime_stats.get(regime)
+            if s:
+                print(
+                    f"  {regime_names.get(regime, str(regime)):<8}"
+                    f" {s['n_trades']:>7}"
+                    f" {s['win_rate']:>9.3f}"
+                    f" {s['total_return']:>8.4f}"
+                    f" {s['sharpe']:>7.2f}"
+                )
+
 
 # ---------------------------------------------------------------------------
 # Data preparation (shared between single and multi-symbol paths)
@@ -188,6 +213,55 @@ def _prepare_df(settings: Settings) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Training + evaluation for one symbol (single DataFrame)
 # ---------------------------------------------------------------------------
+
+
+def _compute_pipeline_regime(
+    symbols: list[str], settings: Settings
+) -> pd.Series | None:
+    """Compute market regime from equal-weighted pool of all symbols."""
+    from .data import load_data as _load
+
+    dfs: list[pd.DataFrame] = []
+    for sym in symbols:
+        sym_settings = Settings(
+            symbol=sym, symbols=[sym],
+            start_date=settings.start_date, end_date=settings.end_date,
+            data_lake_root=settings.data_lake_root,
+            min_listed_days=settings.min_listed_days,
+            up_threshold=settings.up_threshold,
+        )
+        df = _load(sym_settings)
+        if df is not None and len(df) >= 50:
+            dfs.append(df)
+
+    if not dfs:
+        print("[regime] Not enough data to compute regime")
+        return None
+
+    proxy = compute_market_proxy(dfs)
+    regime = classify_regime(proxy)
+    summary = regime.value_counts().to_dict()
+    print(f"[regime] Market proxy from {len(dfs)} symbols: "
+          f"bull={summary.get(1, 0)}d, range={summary.get(0, 0)}d, "
+          f"bear={summary.get(-1, 0)}d")
+    return regime
+
+
+def _compute_single_regime(settings: Settings) -> pd.Series | None:
+    """Compute regime from a single stock's own close (fallback)."""
+    from .data import load_data as _load
+
+    df = _load(settings)
+    if df is None or len(df) < 60:
+        return None
+
+    close_series: pd.Series = df.set_index("trade_date")["close"]  # type: ignore[assignment]
+    regime = classify_regime(close_series)
+    summary = regime.value_counts().to_dict()
+    print(f"[regime] Single-stock proxy from {settings.symbol}: "
+          f"bull={summary.get(1, 0)}d, range={summary.get(0, 0)}d, "
+          f"bear={summary.get(-1, 0)}d")
+    return regime
 
 
 def _log_eval_metrics(report: dict[str, Any], cv_stats: dict[str, Any]) -> None:
@@ -225,10 +299,13 @@ def _train_and_evaluate(
     purge_days: int,
     embargo_days: int,
     label: str = "",
+    *,
+    regime_labels: pd.Series | None = None,
 ) -> dict[str, Any] | None:
     """Train model and evaluate on a single symbol's DataFrame.
 
     Expects df to already have features, labels, and all keep_cols.
+    If regime_labels is provided, it is passed to walk_forward for per-regime stats.
     """
     if len(df) < 50:
         return None
@@ -333,6 +410,7 @@ def _train_and_evaluate(
             retrain_freq="ME",
             cost_bps=args.backtest_cost_bps,
             purge_days=purge_days,
+            regime_labels=regime_labels,
         )
         _print_backtest(bt)
         report["backtest"] = bt
@@ -353,12 +431,15 @@ def _run_single_experiment(
     args: argparse.Namespace,
     purge_days: int,
     embargo_days: int,
+    *,
+    regime_labels: pd.Series | None = None,
 ) -> dict[str, Any] | None:
     """Full pipeline for a single symbol: load → prepare → train → eval."""
     df = _prepare_df(settings)
     if df is None or len(df) < 50:
         return None
-    return _train_and_evaluate(df, settings, args, purge_days, embargo_days)
+    return _train_and_evaluate(df, settings, args, purge_days, embargo_days,
+                               regime_labels=regime_labels)
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +488,18 @@ def _run_neutralized_multi(
     print(f"[pool] Pooled DataFrame: {len(pooled)} rows, "
           f"{pooled['_symbol'].nunique()} symbols")
 
+    # Regime: compute from raw pool before neutralization
+    pipeline_regime: pd.Series | None = None
+    if args.regime:
+        raw_dfs = [d for _, d in all_dfs]
+        proxy = compute_market_proxy(raw_dfs)
+        if not proxy.empty:
+            pipeline_regime = classify_regime(proxy)
+            summary = pipeline_regime.value_counts().to_dict()
+            print(f"[regime] Market proxy from {len(raw_dfs)} symbols: "
+                  f"bull={summary.get(1, 0)}d, range={summary.get(0, 0)}d, "
+                  f"bear={summary.get(-1, 0)}d")
+
     # 3. Industry neutralization
     n_before = pooled[FEATURE_COLUMNS].isna().sum().sum()
     pooled = neutralize_industry(pooled, FEATURE_COLUMNS, industry_col="industry")
@@ -443,6 +536,7 @@ def _run_neutralized_multi(
 
         result = _train_and_evaluate(
             sym_df, sym_settings, args, purge_days, embargo_days, label=sym,
+            regime_labels=pipeline_regime,
         )
         if result is not None:
             report_count += 1
@@ -532,6 +626,11 @@ def main(argv: list[str] | None = None) -> None:
     elif len(symbols) > 1:
         # Multi-symbol, no neutralization (simple loop)
         print(f"\n[data] Loading {len(symbols)} symbols ...")
+        # Pre-compute regime labels if requested
+        pipeline_regime: pd.Series | None = None
+        if args.regime:
+            pipeline_regime = _compute_pipeline_regime(symbols, settings)
+
         for i, sym in enumerate(symbols):
             print(f"\n{'=' * 60}")
             print(f"  [{i + 1}/{len(symbols)}] {sym}")
@@ -549,10 +648,13 @@ def main(argv: list[str] | None = None) -> None:
                 cv_method=settings.cv_method,
                 prob_threshold=settings.prob_threshold,
             )
-            _run_single_experiment(sym_settings, args, purge_days, embargo_days)
+            _run_single_experiment(sym_settings, args, purge_days, embargo_days,
+                                   regime_labels=pipeline_regime)
     else:
         # Single symbol
-        _run_single_experiment(settings, args, purge_days, embargo_days)
+        regime = _compute_single_regime(settings) if args.regime else None
+        _run_single_experiment(settings, args, purge_days, embargo_days,
+                               regime_labels=regime)
 
     end_tracking()
 
