@@ -1,0 +1,23 @@
+# Tuned parameter set: deeper trees + more estimators + stronger regularization
+# Run with: ts-ml --config configs/tuned1.yml
+
+symbols: "000001.SZ,600519.SH,600276.SH,000651.SZ,600104.SH,600309.SH,000063.SZ,000002.SZ,600031.SH,601318.SH,600036.SH,600585.SH,000858.SZ,002415.SZ,600900.SH"
+start_date: "20150101"
+calibrate: true
+prob_threshold: 0.55
+neutralize_industry: true
+backtest: true
+regime: true
+
+# Override XGBoost params for stronger model
+xgb_params:
+  n_estimators: 500       # more trees (default 200)
+  learning_rate: 0.005    # lower lr for smoother learning (default 0.01)
+  max_depth: 5            # deeper trees (default 3)
+  subsample: 0.7
+  colsample_bytree: 0.7
+  reg_alpha: 2.0          # stronger L1 (default 1.0)
+  reg_lambda: 2.0         # stronger L2 (default 1.0)
+  objective: "binary:logistic"
+  eval_metric: "logloss"
+  random_state: 42

@@ -532,6 +532,7 @@ def _run_neutralized_multi(
             calibrate=settings.calibrate,
             cv_method=settings.cv_method,
             prob_threshold=settings.prob_threshold,
+            xgb_params=dict(settings.xgb_params),
         )
 
         result = _train_and_evaluate(
@@ -558,6 +559,26 @@ def main(argv: list[str] | None = None) -> None:
         yaml_overrides = load_yaml_config(args.config)
         print(f"[config] Loaded YAML: {args.config}")
 
+    # Merge YAML xgb_params
+    xgb_params = dict(Settings.xgb_params)  # copy defaults
+    if "xgb_params" in yaml_overrides and isinstance(yaml_overrides["xgb_params"], dict):
+        xgb_params.update(yaml_overrides["xgb_params"])
+        print(f"[config] XGBoost params from YAML: {list(yaml_overrides['xgb_params'].keys())}")
+
+    # YAML overrides for boolean flags (CLI args take precedence via Namespace defaults)
+    if not args.backtest and yaml_overrides.get("backtest"):
+        args.backtest = True
+    if not args.regime and yaml_overrides.get("regime"):
+        args.regime = True
+    if not args.calibrate and yaml_overrides.get("calibrate"):
+        args.calibrate = True
+    if not args.neutralize_industry and yaml_overrides.get("neutralize_industry"):
+        args.neutralize_industry = True
+    if not args.compare_models and yaml_overrides.get("compare_models"):
+        args.compare_models = True
+    if not args.optimize_threshold and yaml_overrides.get("optimize_threshold"):
+        args.optimize_threshold = True
+
     # Build symbols list
     symbols = [args.symbol]
     if args.symbols:
@@ -578,6 +599,7 @@ def main(argv: list[str] | None = None) -> None:
         cv_method=args.cv_method,
         prob_threshold=args.prob_threshold,
         neutralize_industry=args.neutralize_industry,
+        xgb_params=xgb_params,
     )
 
     purge_days = args.purge_days
@@ -647,6 +669,7 @@ def main(argv: list[str] | None = None) -> None:
                 calibrate=settings.calibrate,
                 cv_method=settings.cv_method,
                 prob_threshold=settings.prob_threshold,
+                xgb_params=dict(settings.xgb_params),
             )
             _run_single_experiment(sym_settings, args, purge_days, embargo_days,
                                    regime_labels=pipeline_regime)
