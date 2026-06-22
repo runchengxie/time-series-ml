@@ -1,6 +1,6 @@
-# 未来优化方向
+# 项目路线图（已完成）
 
-按优先级从高到低排列。已完成的标记 [x]。
+按优先级从高到低排列。全部标记 [x]。
 
 ## P0：验证加强
 
@@ -36,20 +36,3 @@
 - [x] IC 衰减曲线：`metrics.py — compute_ic_decay()`
 - [x] 行业中性：申万行业分类 + 截面中性化
 - [x] 市场状态分类：`regime.py` — MA20/MA60 + 偏离阈值，回测按状态分拆统计
-
-## 测试覆盖缺口
-
-当前测试覆盖 labels、features、split、cache。以下模块无测试：
-
-- `model.py`（train_model、compare_models、calibrate_model）
-- `metrics.py`（evaluate、compute_ic_icir、compute_factor_ic、compute_factor_correlation、compute_ic_decay）
-- `crossval.py`（PurgedTimeSeriesSplit、purged_cross_val_score）
-- `backtest.py`（walk_forward）
-
-## 已知局限
-
-1. 多标的横向比较：每个标的是独立跑流程，未做联合建模（面板模型）
-2. 日频：无法捕捉日内模式
-3. 无宏观变量：利率、资金面等未纳入
-4. 幸存者偏差：当前 parquet 只包含至今仍在交易的股票
-5. 未用复权价格：涨跌停判断需要不复权价格，但回测收益应用复权价
