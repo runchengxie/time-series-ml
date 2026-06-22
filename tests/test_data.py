@@ -4,12 +4,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ts_ml.config import Settings
+
+# Data lake paths that may not exist in CI
+_DATA_ROOT = Path(
+    "/home/richard/data/market-data-platform/assets/tushare/"
+    "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data"
+)
+_INSTRUMENTS_PATH = Path(
+    "/home/richard/data/market-data-platform/assets/tushare/"
+    "a_share/instruments/a_share_all_instruments_latest.parquet"
+)
+_HAS_DATA = _DATA_ROOT.exists() and _INSTRUMENTS_PATH.exists()
 
 
 def test_data_lake_root_path_exists() -> None:
     """Default data_lake_root should point to a real directory."""
     s = Settings()
+    if not _HAS_DATA:
+        pytest.skip("Data lake not available in CI")
     assert s.data_lake_root.exists(), f"Data lake not found: {s.data_lake_root}"
 
 
@@ -56,9 +71,12 @@ def test_prob_threshold_default() -> None:
 def test_instruments_path_exists() -> None:
     """Default instruments_path should exist."""
     s = Settings()
+    if not _HAS_DATA:
+        pytest.skip("Data lake not available in CI")
     assert s.instruments_path.exists(), f"Instruments not found: {s.instruments_path}"
 
 
+@pytest.mark.skipif(not _HAS_DATA, reason="Data lake not available in CI")
 def test_industry_join_on_real_data() -> None:
     """Loading real data should produce an 'industry' column."""
     s = Settings(symbol="000001.SZ", start_date="20250101", join_industry=True)
