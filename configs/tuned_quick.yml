@@ -1,0 +1,20 @@
+# Tuned params — 3 symbols for fast comparison
+symbols: "000858.SZ,600036.SH,600585.SH"
+start_date: "20150101"
+calibrate: true
+prob_threshold: 0.55
+neutralize_industry: true
+backtest: true
+regime: true
+
+xgb_params:
+  n_estimators: 300
+  learning_rate: 0.005
+  max_depth: 5
+  subsample: 0.7
+  colsample_bytree: 0.7
+  reg_alpha: 2.0
+  reg_lambda: 2.0
+  objective: "binary:logistic"
+  eval_metric: "logloss"
+  random_state: 42

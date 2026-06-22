@@ -560,7 +560,8 @@ def main(argv: list[str] | None = None) -> None:
         print(f"[config] Loaded YAML: {args.config}")
 
     # Merge YAML xgb_params
-    xgb_params = dict(Settings.xgb_params)  # copy defaults
+    xgb_defaults = Settings.__dataclass_fields__["xgb_params"].default_factory()  # type: ignore[attr-defined]
+    xgb_params = dict(xgb_defaults)
     if "xgb_params" in yaml_overrides and isinstance(yaml_overrides["xgb_params"], dict):
         xgb_params.update(yaml_overrides["xgb_params"])
         print(f"[config] XGBoost params from YAML: {list(yaml_overrides['xgb_params'].keys())}")
@@ -583,6 +584,9 @@ def main(argv: list[str] | None = None) -> None:
     symbols = [args.symbol]
     if args.symbols:
         symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+    elif "symbols" in yaml_overrides:
+        symbols = [s.strip() for s in str(yaml_overrides["symbols"]).split(",") if s.strip()]
+        args.symbol = symbols[0]
 
     # Settings
     settings = Settings(
@@ -597,7 +601,11 @@ def main(argv: list[str] | None = None) -> None:
         cv_splits=args.cv_splits,
         calibrate=args.calibrate,
         cv_method=args.cv_method,
-        prob_threshold=args.prob_threshold,
+        prob_threshold=(
+            args.prob_threshold
+            if args.prob_threshold != 0.50 or "prob_threshold" not in yaml_overrides
+            else yaml_overrides["prob_threshold"]
+        ),
         neutralize_industry=args.neutralize_industry,
         xgb_params=xgb_params,
     )
