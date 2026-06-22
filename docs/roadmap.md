@@ -20,21 +20,21 @@
 ## P2：执行与风控
 
 - [x] 信号过滤：`cli.py --prob-threshold`，低置信度信号不交易
-- [ ] 仓位管理：交由 quant-execution-engine 处理（不在研究 repo 重复造）
-- [ ] 止损/止盈：交由 quant-execution-engine 处理
+- [x] 仓位管理：已委托 quant-execution-engine（研究 repo 不负责任意映射）
+- [x] 止损/止盈：已委托 quant-execution-engine
 
 ## P3：工程化
 
 - [x] 配置文件：`config_yaml.py` — YAML 配置文件支持
-- [ ] 实验追踪：MLflow 记录参数和指标
-- [ ] CI/CD：GitHub Actions 自动化测试 + 模型验证
+- [x] 实验追踪：`tracking.py` — MLflow 本地追踪（local file store，零侵入）
+- [x] CI/CD：GitHub Actions（lint + test，不做模型验证）
 
 ## P4：量化研究
 
 - [x] 因子 IC 分析：`metrics.py — compute_factor_ic()`
 - [x] 因子相关性矩阵：`metrics.py — compute_factor_correlation()`
 - [x] IC 衰减曲线：`metrics.py — compute_ic_decay()`
-- [ ] 行业中性：申万行业分类 + 截面中性化
+- [x] 行业中性：申万行业分类 + 截面中性化
 - [ ] 市场状态分类：牛/熊/震荡市分别建模
 
 ## 测试覆盖缺口

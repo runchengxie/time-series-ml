@@ -36,6 +36,7 @@ from .metrics import (
     print_report,
 )
 from .model import compare_models, train_model
+from .tracking import end_tracking, log_backtest, log_metrics, start_tracking
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -189,6 +190,34 @@ def _prepare_df(settings: Settings) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
+def _log_eval_metrics(report: dict[str, Any], cv_stats: dict[str, Any]) -> None:
+    """Extract scalar metrics from evaluation report and log to MLflow."""
+    metrics: dict[str, float] = {}
+
+    # CV stats
+    metrics["cv_accuracy_mean"] = float(cv_stats["mean"])
+    metrics["cv_accuracy_std"] = float(cv_stats["std"])
+
+    # Classification metrics
+    for k in ("train_accuracy", "test_accuracy", "roc_auc", "overfitting_gap",
+              "precision", "recall", "f1"):
+        if k in report and isinstance(report[k], (int, float)):
+            metrics[k] = float(report[k])
+
+    # IC
+    ic = report.get("ic", {})
+    if isinstance(ic, dict):
+        for k in ("rank_ic", "icir"):
+            v = ic.get(k)
+            if isinstance(v, (int, float)) and not (
+                isinstance(v, float) and v in (float("nan"), float("inf"), float("-inf"))
+            ):
+                metrics[k] = float(v)
+
+    if metrics:
+        log_metrics(metrics)
+
+
 def _train_and_evaluate(
     df: pd.DataFrame,
     settings: Settings,
@@ -287,6 +316,9 @@ def _train_and_evaluate(
 
     print_report(report)
 
+    # MLflow: log evaluation metrics
+    _log_eval_metrics(report, cv_stats)
+
     # Walk-forward backtest
     if args.backtest:
         print("\n[backtest] Running walk-forward backtest ...")
@@ -304,6 +336,9 @@ def _train_and_evaluate(
         )
         _print_backtest(bt)
         report["backtest"] = bt
+
+        # MLflow: log backtest metrics
+        log_backtest(bt)
 
     return report
 
@@ -468,6 +503,28 @@ def main(argv: list[str] | None = None) -> None:
     if settings.neutralize_industry:
         print("  Neutralize : industry")
 
+    # MLflow tracking
+    run_tag = symbols[0] if len(symbols) == 1 else f"multi_{len(symbols)}s"
+    start_tracking(
+        "time-series-ml",
+        {
+            "symbol": run_tag,
+            "n_symbols": str(len(symbols)),
+            "start_date": settings.start_date,
+            "end_date": settings.end_date,
+            "up_threshold": str(settings.up_threshold),
+            "test_size": str(settings.test_size),
+            "cv_splits": str(settings.cv_splits),
+            "purge_days": str(purge_days),
+            "embargo_days": str(embargo_days),
+            "calibrate": str(settings.calibrate),
+            "cv_method": settings.cv_method,
+            "prob_threshold": str(settings.prob_threshold),
+            "neutralize_industry": str(settings.neutralize_industry),
+            "min_listed_days": str(settings.min_listed_days),
+        },
+    )
+
     # Route to appropriate path
     if len(symbols) > 1 and settings.neutralize_industry:
         # Multi-symbol + industry neutralization
@@ -496,6 +553,8 @@ def main(argv: list[str] | None = None) -> None:
     else:
         # Single symbol
         _run_single_experiment(settings, args, purge_days, embargo_days)
+
+    end_tracking()
 
 
 if __name__ == "__main__":
