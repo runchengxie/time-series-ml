@@ -1,6 +1,8 @@
-# XGBoost A-Share Stock Prediction
+# xgboost-ts-ashare
 
-使用 XGBoost 预测 A 股次日涨跌的时序二分类策略。从 `xgboost-aapl` 迁移而来，数据源切换为 market-data-platform A 股数据湖。
+使用 XGBoost 预测 A 股次日涨跌的**时序**二分类策略。从 `xgboost-aapl` 迁移而来，数据源切换为 market-data-platform A 股数据湖。
+
+> 与截面策略区分：GitHub 上的 `a-share-factor-core` 是截面因子策略（横向比较同日多只标的），本项目是时序方向预测（单标的逐日预测次日涨跌）。
 
 ## 与 xgboost-aapl 的关键差异
 
