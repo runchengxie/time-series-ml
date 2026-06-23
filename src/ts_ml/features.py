@@ -96,7 +96,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     has_ohlc = all(c in df.columns for c in ("open", "high", "low"))
 
     # --- Trend / Momentum ---
-    for win in (5, 10, 20):
+    for win in (5, 10, 20, 60):
         sma_col = f"SMA{win}"
         df[sma_col] = compute_sma(close_s, length=win)
         df[f"{sma_col}_diff"] = df[sma_col].pct_change()
@@ -104,19 +104,33 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df["RSI_14"] = compute_rsi(close_s, length=14)
     df["MACD_hist"] = compute_macd_hist(close_s)
 
+    # --- Price distance from SMA (normalised) ---
+    for win in (5, 20, 60):
+        sma_col = f"SMA{win}"
+        df[f"price_dist_{win}d"] = (close_s - df[sma_col]) / df[sma_col]
+
     # --- Volume ---
     df["Volume_SMA5"] = compute_sma(vol_s, length=5)
     df["Volume_SMA5_ratio"] = vol_s / df["Volume_SMA5"].replace(0, float("nan"))
+    df["Volume_SMA20"] = compute_sma(vol_s, length=20)
+    df["Volume_SMA20_ratio"] = vol_s / df["Volume_SMA20"].replace(0, float("nan"))
+    # Volume trend: short/long volume ratio
+    df["Volume_trend"] = df["Volume_SMA5"] / df["Volume_SMA20"].replace(0, float("nan"))
 
     # --- Volatility / Risk ---
     if has_ohlc:
         high_s = cast(pd.Series, df["high"])
         low_s = cast(pd.Series, df["low"])
-
         df["ATR_14"] = compute_atr(high_s, low_s, close_s, length=14)
         df["ATR_14_pct"] = df["ATR_14"] / close_s
 
     df["HistVol_20"] = compute_historical_volatility(close_s, length=20)
+    df["HistVol_60"] = compute_historical_volatility(close_s, length=60)
+
+    # --- Bollinger Band position ---
+    sma20 = df.get("SMA20", compute_sma(close_s, length=20))
+    vol20 = close_s.rolling(20, min_periods=20).std()
+    df["BB_position"] = (close_s - sma20) / vol20.replace(0, float("nan"))
 
     # --- Candle body / shadow ratios ---
     if has_ohlc:
@@ -129,6 +143,24 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         for k, v in candle.items():
             df[k] = v
 
+    # --- Gap features ---
+    if "pre_close" in df.columns:
+        pre_close = cast(pd.Series, df["pre_close"])
+        df["gap_pct"] = (close_s.shift(1) - pre_close) / pre_close  # yesterday's gap
+        # Today's gap (open vs prev_close)
+        if has_ohlc:
+            open_s = cast(pd.Series, df["open"])
+            df["open_gap"] = (open_s - pre_close) / pre_close
+
+    # --- Recent return skewness (20-day) ---
+    ret_1d = close_s.pct_change()
+    df["ret_skew_20d"] = ret_1d.rolling(20, min_periods=20).skew()
+    df["ret_kurt_20d"] = ret_1d.rolling(20, min_periods=20).kurt()
+
+    # --- Turnover rate (if available) ---
+    if "turnover_rate" in df.columns:
+        pass  # already in data, leave as-is
+
     return df
 
 
@@ -138,16 +170,31 @@ FEATURE_COLUMNS = [
     "SMA5_diff",
     "SMA10_diff",
     "SMA20_diff",
+    "SMA60_diff",
     "RSI_14",
     "MACD_hist",
+    # Price distance from MA
+    "price_dist_5d",
+    "price_dist_20d",
+    "price_dist_60d",
     # Volume
     "Volume_SMA5_ratio",
+    "Volume_SMA20_ratio",
+    "Volume_trend",
     "vol",
     # Volatility
     "ATR_14_pct",
     "HistVol_20",
+    "HistVol_60",
+    "BB_position",
     # Candle structure
     "body_ratio",
     "upper_shadow_ratio",
     "lower_shadow_ratio",
+    # Gap
+    "gap_pct",
+    "open_gap",
+    # Return distribution
+    "ret_skew_20d",
+    "ret_kurt_20d",
 ]

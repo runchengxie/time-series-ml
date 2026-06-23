@@ -3,6 +3,8 @@
 Standard TimeSeriesSplit does not account for:
 - Purge: training samples whose label window overlaps with the test period.
 - Embargo: a gap between train and test to prevent serial-correlation leakage.
+
+Supports sample_weight (for exp_decay weighting) and regression scoring.
 """
 
 from __future__ import annotations
@@ -76,11 +78,31 @@ def purged_cross_val_score(
     y: np.ndarray,
     cv: PurgedTimeSeriesSplit,
     scoring: str = "accuracy",
+    sample_weight: np.ndarray | None = None,
 ) -> list[float]:
-    """Compute cross-validation scores with purge/embargo."""
-    from sklearn.metrics import accuracy_score, roc_auc_score
+    """Compute cross-validation scores with purge/embargo.
 
-    scorer = {"accuracy": accuracy_score, "roc_auc": roc_auc_score}[scoring]
+    Parameters
+    ----------
+    sample_weight : np.ndarray or None
+        Sample weights for training. Only the training-fold subset is passed
+        to model.fit(). Default None (uniform weights).
+    """
+    from sklearn.metrics import (
+        accuracy_score,
+        mean_squared_error,
+        r2_score,
+        roc_auc_score,
+    )
+
+    _scorer_map = {
+        "accuracy": accuracy_score,
+        "roc_auc": roc_auc_score,
+        "neg_mean_squared_error": lambda yt, yp: -mean_squared_error(yt, yp),
+        "r2": r2_score,
+    }
+    scorer = _scorer_map[scoring]
+
     scores: list[float] = []
 
     for train_idx, test_idx in cv.split(X, y):
@@ -90,7 +112,19 @@ def purged_cross_val_score(
         y_test_fold = y[test_idx]
 
         model = estimator.__class__(**estimator.get_params())
-        model.fit(X_train_fold, y_train_fold)
+
+        # Pass sample_weight for this fold
+        fold_sample_weight = None
+        if sample_weight is not None:
+            fold_sample_weight = sample_weight[train_idx]
+
+        if fold_sample_weight is not None:
+            try:
+                model.fit(X_train_fold, y_train_fold, sample_weight=fold_sample_weight)
+            except TypeError:
+                model.fit(X_train_fold, y_train_fold)
+        else:
+            model.fit(X_train_fold, y_train_fold)
 
         if scoring == "roc_auc":
             prob = model.predict_proba(X_test_fold)[:, 1]

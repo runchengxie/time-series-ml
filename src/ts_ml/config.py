@@ -36,8 +36,15 @@ class Settings:
 
     # --- Model ---
     test_size: float = 0.2
-    up_threshold: float = 0.002             # +0.2% next-day return
+    final_oos_size: float = 0.0            # 0 = disabled; 0.10 = last 10% as final OOS holdout
+    up_threshold: float = 0.002             # +0.2% next-day return (legacy binary)
     random_state: int = 42
+
+    # --- Triple Barrier Labeling ---
+    triple_barrier: bool = False            # True = use triple barrier labels (-1/0/+1)
+    holding_period: int = 5                 # days to hold (time barrier)
+    profit_take: float = 0.05               # profit barrier as fraction (e.g. 0.05 = 5%)
+    stop_loss: float = 0.03                 # stop barrier as fraction (e.g. 0.03 = 3%)
 
     # --- Calibration ---
     calibrate: bool = False                 # fit CalibratedClassifierCV on train
@@ -45,6 +52,18 @@ class Settings:
 
     # --- Signal filter ---
     prob_threshold: float = 0.50            # min predicted prob to trade
+
+    # --- Sample weighting ---
+    sample_weight_halflife: int = 0         # 0 = disabled (equal weight); >0 = exp_decay
+                                            # halflife in trading days (e.g. 252 = 1 year)
+
+    # --- Training window ---
+    train_window_days: int = 0              # 0 = use all history; >0 = rolling window
+                                            # (e.g. 504 = ~2 years of trading days)
+
+    # --- Regression mode ---
+    regression: bool = False                # True = predict future_return (regression)
+                                            # instead of binary up/down (classification)
 
     # --- XGBoost hyper-params ---
     xgb_params: dict[str, Any] = field(default_factory=lambda: {
@@ -63,10 +82,28 @@ class Settings:
     # --- Cross-validation ---
     cv_splits: int = 5
 
+    # --- Backtest ---
+    backtest: bool = False
+    backtest_cost_bps: float = 5.0          # legacy: round-trip cost (deprecated by buy/sell split)
+    backtest_buy_cost_bps: float = 0.0      # buy-side cost in bps (A-share: 0 for stamp duty)
+    backtest_sell_cost_bps: float = 0.0     # sell-side cost in bps; if 0, uses backtest_cost_bps/2
+    backtest_enforce_price_limit: bool = True  # skip signals when stock hits daily price limit
+
+    # --- Liquidity filter ---
+    min_daily_amount: float = 0.0           # 0 = disabled; >0 = filter out dates below this
+                                            # daily turnover in CNY (e.g. 1_000_000 = 100万)
+
+    # --- Ablation ---
+    ablation: bool = False
+
     def __post_init__(self) -> None:
         if not self.end_date:
             from datetime import datetime
             object.__setattr__(self, "end_date", datetime.now().strftime("%Y%m%d"))
+
+        # Derive sell cost from legacy backtest_cost_bps if not explicitly set
+        if self.backtest_sell_cost_bps == 0.0 and self.backtest_cost_bps > 0:
+            object.__setattr__(self, "backtest_sell_cost_bps", self.backtest_cost_bps / 2.0)
 
     @property
     def cache_file(self) -> Path:

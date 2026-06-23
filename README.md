@@ -20,70 +20,74 @@ time-series-ml/
 │   ├── industry.py        # 申万行业截面中性化
 │   ├── backtest.py        # Walk-forward 回测 + 信号过滤
 │   ├── metrics.py         # 评估：baseline、IC/ICIR、因子分析
+│   ├── regime.py          # 市场状态分类
+│   ├── tracking.py        # MLflow 实验追踪
 │   └── cli.py             # 命令行入口
 ├── tests/
 ├── docs/
+│   ├── README.md          # 文档导航首页
+│   ├── get-started.md     # 快速上手
+│   ├── runbook.md         # 操作手册（工作流、FAQ）
+│   ├── cli.md             # CLI 参考
+│   ├── config.md          # YAML 配置参考
+│   ├── pipeline-overview.md  # 系统流程总览
+│   ├── methodology.md     # 策略方法论
+│   ├── validation.md      # 验证与防过拟合
+│   ├── metrics.md         # 指标与结果解读
+│   ├── capabilities.md    # 功能清单
+│   ├── limitations.md     # 测试缺口与已知局限
+│   ├── dev.md             # 开发与测试
+│   └── concepts/
+│       ├── overfitting-controls.md  # 防过拟合机制总览
+│       └── execution-costs.md       # 成本与执行假设
 ├── pyproject.toml
 └── README.md
 ```
 
 ## 快速开始
 
-### 安装
-
 ```bash
 cd ~/code/time-series-ml
 uv sync --dev
 source .venv/bin/activate
+
+# 单标的快速验证
+ts-ml --symbol 000001.SZ --start-date 20200101
+
+# 深度分析
+ts-ml --symbol 000001.SZ --calibrate --compare-models --backtest --regime
 ```
 
-### 运行
-
-```bash
-# 单标的（默认 000001.SZ 平安银行）
-python -m ts_ml.cli
-
-# 或 CLI 入口
-ts-ml
-
-# 多模型对比 + 概率校准 + 信号过滤 + 回测
-ts-ml --calibrate --prob-threshold 0.55 --compare-models --backtest
-
-# 多标的 + 行业中性化
-ts-ml --symbols 000001.SZ,600000.SH,000858.SZ,600519.SH,601318.SH \
-      --neutralize-industry --backtest
-```
-
-## CLI 参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--symbol` | `000001.SZ` | 单标的 |
-| `--symbols` | `""` | 多标的，逗号分隔 |
-| `--start-date` | `20150101` | 起始日期 |
-| `--calibrate` | `False` | 概率校准 |
-| `--prob-threshold` | `0.50` | 信号过滤阈值 |
-| `--neutralize-industry` | `False` | 行业截面中性化 |
-| `--compare-models` | `False` | 多模型对比 |
-| `--backtest` | `False` | Walk-forward 回测 |
+详细步骤见 `docs/get-started.md`。
 
 ## 测试
 
 ```bash
-pytest             # 23 个测试
-ruff check .       # Lint
-pyright            # 类型检查
+uv run python -m pytest -q     # 23 个单元测试
+uv run ruff check src/ tests/  # Lint
+npx pyright src/               # 类型检查
 ```
+
+详见 `docs/dev.md`。
 
 ## 文档
 
 | 文档 | 内容 |
-|------|------|
-| [docs/methodology.md](docs/methodology.md) | 策略算法、特征体系、模型架构、回测方法论、TCA 假设 |
-| [docs/validation.md](docs/validation.md) | 防过拟合措施、Purge/Embargo、IC/ICIR、检验清单、预警信号 |
+| --- | --- |
+| [docs/README.md](docs/README.md) | 文档导航首页，按问题找页面 |
+| [docs/get-started.md](docs/get-started.md) | 前置条件、最短跑通、运行后检查 |
+| [docs/runbook.md](docs/runbook.md) | 典型工作流、常见问题 |
+| [docs/cli.md](docs/cli.md) | CLI 命令与全部参数速查 |
+| [docs/config.md](docs/config.md) | YAML 配置参考与模板 |
+| [docs/pipeline-overview.md](docs/pipeline-overview.md) | 系统流程总览、模块分工 |
+| [docs/methodology.md](docs/methodology.md) | 策略算法、特征体系、模型架构、回测方法论 |
+| [docs/validation.md](docs/validation.md) | 防过拟合措施、Purge/Embargo、IC/ICIR、检验清单 |
+| [docs/metrics.md](docs/metrics.md) | 指标含义、解读顺序、常见误读 |
 | [docs/capabilities.md](docs/capabilities.md) | 功能清单：数据处理、特征、模型、验证、回测、工程化 |
-| [docs/limitations.md](docs/limitations.md) | 测试覆盖缺口、策略局限、数据局限、TCA 假设局限 |
-| [docs/runbook.md](docs/runbook.md) | 安装、数据前置、典型工作流、常见问题 |
+| [docs/limitations.md](docs/limitations.md) | 测试覆盖缺口、策略局限、数据局限 |
+| [docs/dev.md](docs/dev.md) | 开发环境、测试命令、CI 架构、代码质量闸门 |
+| [docs/concepts/overfitting-controls.md](docs/concepts/overfitting-controls.md) | 防过拟合机制全景地图 |
+| [docs/concepts/execution-costs.md](docs/concepts/execution-costs.md) | 交易成本模型、执行假设、适用边界 |
 
 ## 许可证
 

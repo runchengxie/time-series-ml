@@ -2,6 +2,11 @@
 
 Implements a purged walk-forward framework: at each retrain date, the model
 is refit on all prior data and used to generate signals for the next period.
+
+Supports:
+- Buy/sell split costs (buy_cost_bps, sell_cost_bps)
+- Price-limit tradability flags (is_tradable, is_tradable_buy, is_tradable_sell)
+- Per-regime statistics
 """
 
 from __future__ import annotations
@@ -22,6 +27,10 @@ def walk_forward(
     cost_bps: float = 5.0,
     purge_days: int = 20,
     regime_labels: pd.Series | None = None,
+    buy_cost_bps: float = 0.0,
+    sell_cost_bps: float = 0.0,
+    tradable_col: str = "is_tradable",
+    triple_barrier: bool = False,
 ) -> dict[str, Any]:
     """Purged walk-forward backtest.
 
@@ -30,28 +39,54 @@ def walk_forward(
     df : DataFrame
         Must include 'trade_date' (datetime), feature columns, 'target' (0/1),
         'future_return' (float), and a 'close' column.
+        Optionally includes tradability flag columns.
     threshold : float
         Probability threshold for generating buy signals (0.55+ recommended
         after calibration to filter low-confidence predictions).
     retrain_freq : str
         Pandas offset alias ('ME' = monthly, 'W' = weekly).
     cost_bps : float
-        Round-trip transaction cost in basis points (e.g. 5 = 0.05%).
+        Legacy round-trip transaction cost in basis points.
+        Only used if buy_cost_bps/sell_cost_bps are both 0.
+    buy_cost_bps : float
+        Buy-side cost in bps (default 0 for A-share: no stamp duty on buy).
+    sell_cost_bps : float
+        Sell-side cost in bps. If 0, falls back to cost_bps/2.
+    purge_days : int
+        Days to purge from end of training window.
     regime_labels : pd.Series, optional
         Integer regime labels (1=bull, 0=range, -1=bear) aligned to df's index.
         If provided, per-regime statistics are included in the output.
+    tradable_col : str
+        Column name for the tradability flag. If the column exists and a row
+        has tradable_col=False, the signal is skipped for that row.
+        Use 'is_tradable_buy' for buy-only filtering.
 
     Returns
     -------
     dict with keys: total_return, annual_return, annual_vol, sharpe,
     max_drawdown, win_rate, profit_factor, n_trades, turnover, equity_curve,
-    monthly_returns, signal_rate, regime_stats (if regime_labels provided).
+    monthly_returns, signal_rate, n_skipped_untradable, regime_stats (if
+    regime_labels provided).
     """
+    # Resolve costs
+    if buy_cost_bps == 0.0 and sell_cost_bps == 0.0:
+        buy_cost = cost_bps / 10000.0 / 2.0   # half of round-trip
+        sell_cost = cost_bps / 10000.0 / 2.0
+    else:
+        buy_cost = buy_cost_bps / 10000.0
+        sell_cost = sell_cost_bps / 10000.0
+
     if "trade_date" not in df.columns:
         df = df.copy()
         df["trade_date"] = pd.to_datetime(df.index)
 
     df = df.sort_values("trade_date").reset_index(drop=True)
+
+    # Check for tradability columns
+    has_tradable = tradable_col in df.columns
+    if has_tradable:
+        print(f"[backtest] Using tradability column: {tradable_col}")
 
     periods = pd.date_range(
         start=df["trade_date"].min(),
@@ -61,6 +96,7 @@ def walk_forward(
 
     trades: list[dict[str, Any]] = []
     total_signals = 0
+    n_skipped_untradable = 0
     equity = 1.0
     equity_curve: list[float] = [1.0]
     dates: list[pd.Timestamp] = [df["trade_date"].iloc[0]]
@@ -91,14 +127,31 @@ def walk_forward(
         model = model_class(**model_params)
         model.fit(X_train, y_train)
 
-        prob = model.predict_proba(X_test)[:, 1]
-        signal = (prob >= threshold).astype(int)
+        # Signal generation
+        if triple_barrier:
+            proba = model.predict_proba(X_test)
+            profit_prob = proba[:, 2]
+            # Use profit probability directly as trading signal
+            # Trade when model assigns high enough confidence to profit_take
+            raw_signal = (profit_prob >= threshold).astype(int)
+        else:
+            prob = model.predict_proba(X_test)[:, 1]
+            raw_signal = (prob >= threshold).astype(int)
+
+        signal = raw_signal.copy()
+
+        # Apply tradability filter
+        if has_tradable:
+            tradable_mask = df.loc[test_mask, tradable_col].values.astype(bool)
+            signal = signal & tradable_mask.astype(int)
+
         total_signals += signal.sum()
 
         for i in range(len(signal)):
             if signal[i] == 1:
                 ret = returns_test.iloc[i]
-                cost = cost_bps / 10000.0
+                # Buy-side cost (enter position) + sell-side (exit next day)
+                cost = buy_cost + sell_cost
                 net_ret = ret - cost
                 trade_record: dict[str, Any] = {
                     "date": test_dates.iloc[i],
@@ -114,6 +167,10 @@ def walk_forward(
             equity_curve.append(equity)
             dates.append(test_dates.iloc[i])
 
+        # Count skipped signals due to untradable
+        if has_tradable:
+            n_skipped_untradable += (raw_signal.sum() - signal.sum())
+
     metrics = _compute_backtest_metrics(trades, equity_curve, dates)
 
     # Signal rate: what fraction of test days generated a trade signal
@@ -127,6 +184,10 @@ def walk_forward(
     )
     metrics["signal_rate"] = total_signals / max(n_test_days, 1)
     metrics["prob_threshold_used"] = threshold
+    metrics["cost_bps_used"] = (buy_cost + sell_cost) * 10000.0
+    metrics["buy_cost_bps"] = buy_cost * 10000.0
+    metrics["sell_cost_bps"] = sell_cost * 10000.0
+    metrics["n_skipped_untradable"] = int(n_skipped_untradable)
 
     # Per-regime statistics
     if regime_labels is not None and trades:
@@ -190,7 +251,6 @@ def _compute_backtest_metrics(
         "win_rate": float(win_rate),
         "profit_factor": float(profit_factor),
         "turnover": float(turnover),
-        "cost_bps_used": 5.0,
         "equity_curve": equity_curve,
         "monthly_returns": monthly.tolist(),
     }
@@ -216,22 +276,22 @@ def _compute_regime_stats(
     n_years = max((dates[-1] - dates[0]).days / 365.25, 0.25)
     stats: dict[int, dict[str, float]] = {}
 
-    for regime, returns in regime_trades.items():
-        if not returns:
+    for regime, returns_val in regime_trades.items():
+        if not returns_val:
             continue
-        arr = np.array(returns)
+        arr = np.array(returns_val)
         n = len(arr)
         wins = arr[arr > 0]
         total_ret = float(np.prod(1.0 + arr) - 1.0)
         ann_ret = (1.0 + total_ret) ** (1.0 / n_years) - 1.0
         ann_vol = float(np.std(arr) * np.sqrt(252))
-        sharpe = ann_ret / ann_vol if ann_vol > 0 else 0.0
+        sharpe_val = ann_ret / ann_vol if ann_vol > 0 else 0.0
 
         stats[regime] = {
             "n_trades": n,
             "win_rate": float(len(wins) / n) if n > 0 else 0.0,
             "total_return": total_ret,
-            "sharpe": sharpe,
+            "sharpe": sharpe_val,
         }
 
     return stats
