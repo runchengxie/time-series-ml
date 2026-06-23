@@ -22,6 +22,14 @@ def make_ohlcv(n_rows: int = 200) -> pd.DataFrame:
         "close": close, "vol": vol,
     })
     df["trade_date"] = pd.date_range("2020-01-01", periods=n_rows, freq="B")
+    # Add columns from daily_clean that features.py optionally uses
+    df["pre_close"] = close * (1 + rng.normal(0, 0.01, n_rows))
+    df["turnover_rate"] = rng.uniform(0.5, 5.0, n_rows)
+    df["turnover_rate_f"] = df["turnover_rate"]
+    df["volume_ratio"] = rng.uniform(0.5, 2.0, n_rows)
+    df["pe_ttm"] = rng.uniform(5.0, 50.0, n_rows)
+    df["pb"] = rng.uniform(0.5, 5.0, n_rows)
+    df["total_mv"] = rng.uniform(1e9, 1e11, n_rows)
     return df
 
 

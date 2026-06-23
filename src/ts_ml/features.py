@@ -158,8 +158,19 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df["ret_kurt_20d"] = ret_1d.rolling(20, min_periods=20).kurt()
 
     # --- Turnover rate (if available) ---
-    if "turnover_rate" in df.columns:
-        pass  # already in data, leave as-is
+    # Already in daily_clean as turnover_rate_f — just keep as-is
+    
+    # --- Valuation features (from daily_basic, merged in daily_clean) ---
+    if "pe_ttm" in df.columns:
+        df["log_pe"] = np.log(df["pe_ttm"].clip(lower=0.01))
+    if "pb" in df.columns:
+        df["log_pb"] = np.log(df["pb"].clip(lower=0.01))
+    if "total_mv" in df.columns:
+        df["log_mcap"] = np.log(df["total_mv"].clip(lower=1))
+
+    # --- Volume ratio (from daily_clean) ---
+    if "volume_ratio" in df.columns:
+        df["volume_ratio_raw"] = df["volume_ratio"]
 
     return df
 
@@ -197,4 +208,12 @@ FEATURE_COLUMNS = [
     # Return distribution
     "ret_skew_20d",
     "ret_kurt_20d",
+    # Turnover
+    "turnover_rate_f",
+    # Volume ratio
+    "volume_ratio_raw",
+    # Valuation
+    "log_pe",
+    "log_pb",
+    "log_mcap",
 ]

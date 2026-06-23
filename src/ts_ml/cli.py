@@ -69,6 +69,8 @@ FEATURE_FAMILIES: dict[str, list[str]] = {
     "candle": ["body_ratio", "upper_shadow_ratio", "lower_shadow_ratio"],
     "gap": ["gap_pct", "open_gap"],
     "ret_dist": ["ret_skew_20d", "ret_kurt_20d"],
+    "turnover": ["turnover_rate_f", "volume_ratio_raw"],
+    "valuation": ["log_pe", "log_pb", "log_mcap"],
 }
 
 
@@ -338,7 +340,9 @@ def _prepare_df(settings: Settings) -> pd.DataFrame:
     # Select columns and drop NaN
     keep_cols = [*FEATURE_COLUMNS, "target", "future_return"]
     for c in ("trade_date", "close", "industry", "ts_code",
-              "is_tradable", "is_tradable_buy", "is_tradable_sell", "amount"):
+              "is_tradable", "is_tradable_buy", "is_tradable_sell", "amount",
+              "turnover_rate", "volume_ratio",
+              "pe_ttm", "pb", "total_mv", "pre_close", "open", "high", "low"):
         if c in df.columns:
             keep_cols.append(c)
     collected = df[[c for c in keep_cols if c in df.columns]].dropna().reset_index(drop=True)
