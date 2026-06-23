@@ -18,7 +18,7 @@ def make_multi_stock_df(n_stocks: int = 10, n_dates: int = 50) -> pd.DataFrame:
     industries = ["银行", "电气设备", "元器件", "软件服务", "化工原料"]
     records = []
     for d in range(n_dates):
-        trade_date = pd.Timestamp("2020-01-01") + pd.Timedelta(days=d)
+        trade_date = pd.Timestamp("2020-01-01") + pd.DateOffset(days=int(d))
         for s in range(n_stocks):
             ind = industries[s % len(industries)]
             row = {

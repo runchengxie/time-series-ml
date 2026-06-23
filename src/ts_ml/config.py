@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Default data lake paths — override via environment variables.
+# TIME_SERIES_ML_DATA_LAKE_ROOT: root directory containing per-symbol .parquet files
+# TIME_SERIES_ML_INSTRUMENTS_PATH: path to the instruments parquet file
+_DEFAULT_DATA_LAKE_ROOT = os.environ.get(
+    "TIME_SERIES_ML_DATA_LAKE_ROOT",
+    "/home/richard/data/market-data-platform/assets/tushare/"
+    "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data",
+)
+_DEFAULT_INSTRUMENTS_PATH = os.environ.get(
+    "TIME_SERIES_ML_INSTRUMENTS_PATH",
+    "/home/richard/data/market-data-platform/assets/tushare/"
+    "a_share/instruments/a_share_all_instruments_latest.parquet",
+)
 
 
 @dataclass(frozen=True)
@@ -19,20 +34,11 @@ class Settings:
     symbols: list[str] = field(default_factory=lambda: ["000001.SZ"])
     start_date: str = "20150101"            # YYYYMMDD
     end_date: str = ""                      # YYYYMMDD; empty → computed
-    data_lake_root: Path = Path(
-        "/home/richard/data/market-data-platform/assets/tushare/"
-        "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data"
-    )
-    instruments_path: Path = Path(
-        "/home/richard/data/market-data-platform/assets/tushare/"
-        "a_share/instruments/a_share_all_instruments_latest.parquet"
-    )
+    data_lake_root: Path = Path(_DEFAULT_DATA_LAKE_ROOT)
+    instruments_path: Path = Path(_DEFAULT_INSTRUMENTS_PATH)
     join_industry: bool = True             # auto-join 申万行业分类 from instruments
     neutralize_industry: bool = False       # cross-sectional industry neutralization
     min_listed_days: int = 252              # exclude stocks with < 1 year of data
-
-    # --- Cache ---
-    cache_dir: Path = Path(".cache")
 
     # --- Model ---
     test_size: float = 0.2
@@ -105,8 +111,4 @@ class Settings:
         if self.backtest_sell_cost_bps == 0.0 and self.backtest_cost_bps > 0:
             object.__setattr__(self, "backtest_sell_cost_bps", self.backtest_cost_bps / 2.0)
 
-    @property
-    def cache_file(self) -> Path:
-        """Parameterised cache path."""
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        return self.cache_dir / f"{self.symbol}_{self.start_date}_{self.end_date}.parquet"
+

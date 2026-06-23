@@ -99,7 +99,7 @@ def build_features(df: pd.DataFrame, *, use_lag: bool = False) -> pd.DataFrame:
     for win in (5, 10, 20, 60):
         sma_col = f"SMA{win}"
         df[sma_col] = compute_sma(close_s, length=win)
-        df[f"{sma_col}_diff"] = df[sma_col].pct_change()
+        df[f"{sma_col}_diff"] = df[sma_col].pct_change(fill_method=None)
 
     df["RSI_14"] = compute_rsi(close_s, length=14)
     df["MACD_hist"] = compute_macd_hist(close_s)

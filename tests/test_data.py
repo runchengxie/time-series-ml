@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from ts_ml.config import Settings
 
-# Data lake paths that may not exist in CI
+# Data lake paths — respect env vars, fall back to hardcoded defaults for local dev.
 _DATA_ROOT = Path(
-    "/home/richard/data/market-data-platform/assets/tushare/"
-    "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data"
+    os.environ.get(
+        "TIME_SERIES_ML_DATA_LAKE_ROOT",
+        "/home/richard/data/market-data-platform/assets/tushare/"
+        "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data",
+    )
 )
 _INSTRUMENTS_PATH = Path(
-    "/home/richard/data/market-data-platform/assets/tushare/"
-    "a_share/instruments/a_share_all_instruments_latest.parquet"
+    os.environ.get(
+        "TIME_SERIES_ML_INSTRUMENTS_PATH",
+        "/home/richard/data/market-data-platform/assets/tushare/"
+        "a_share/instruments/a_share_all_instruments_latest.parquet",
+    )
 )
 _HAS_DATA = _DATA_ROOT.exists() and _INSTRUMENTS_PATH.exists()
 
@@ -26,27 +33,6 @@ def test_data_lake_root_path_exists() -> None:
     if not _HAS_DATA:
         pytest.skip("Data lake not available in CI")
     assert s.data_lake_root.exists(), f"Data lake not found: {s.data_lake_root}"
-
-
-def test_cache_file_path_is_parameterised() -> None:
-    """Different symbols produce different cache paths."""
-    s1 = Settings(symbol="000001.SZ", start_date="20210101", end_date="20220101")
-    s2 = Settings(symbol="000002.SZ", start_date="20210101", end_date="20220101")
-    assert s1.cache_file != s2.cache_file
-
-
-def test_cache_file_path_mkdir() -> None:
-    """cache_file should create the cache directory if it doesn't exist."""
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        s = Settings(
-            symbol="TEST",
-            start_date="20200101",
-            end_date="20200110",
-            cache_dir=Path(tmp),
-        )
-        assert s.cache_file.parent.exists()
 
 
 def test_end_date_default() -> None:

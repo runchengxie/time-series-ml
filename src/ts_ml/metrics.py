@@ -584,6 +584,36 @@ def majority_baseline_triple(y_true: pd.Series) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _print_overfitting_diagnosis(gap: float) -> None:
+    """Shared overfitting diagnosis for classification and triple barrier."""
+    if gap < 0.05:
+        print("\n  [OK] Low overfitting -- good generalisation.")
+    elif gap < 0.10:
+        print("\n  [WARN] Moderate overfitting -- consider tuning regularisation.")
+    else:
+        print("\n  [FAIL] High overfitting -- model may be memorising training data.")
+
+
+def _print_ic_diagnosis(ic_info: dict[str, float]) -> None:
+    """Shared Rank IC/ICIR diagnosis for all modes."""
+    rank_ic = ic_info.get("rank_ic", 0)
+    icir = ic_info.get("icir", 0)
+    if not np.isnan(rank_ic):
+        if rank_ic > 0.05:
+            print("  [OK] Rank IC > 0.05 -- meaningful predictive signal.")
+        elif rank_ic > 0:
+            print("  [WARN] Rank IC > 0 but weak -- marginal signal.")
+        else:
+            print("  [FAIL] Rank IC <= 0 -- no directional signal.")
+    if not np.isnan(icir):
+        if icir > 1.0:
+            print("  [OK] ICIR > 1.0 -- stable signal.")
+        elif icir > 0.3:
+            print("  [WARN] ICIR > 0.3 -- modest stability.")
+        else:
+            print("  [FAIL] ICIR < 0.3 -- signal unstable across sub-periods.")
+
+
 def print_report(report: dict[str, Any]) -> None:
     """Pretty-print an evaluation report."""
     mode = report.get("mode", "classification")
@@ -618,32 +648,11 @@ def _print_classification_report(report: dict[str, Any]) -> None:
         print(f"  IC p-value:            {ic['ic_p_value']:.4f}")
 
     # Overfitting diagnosis
-    gap = report["overfitting_gap"]
-    if gap < 0.05:
-        print("\n  [OK] Low overfitting -- good generalisation.")
-    elif gap < 0.10:
-        print("\n  [WARN] Moderate overfitting -- consider tuning regularisation.")
-    else:
-        print("\n  [FAIL] High overfitting -- model may be memorising training data.")
+    _print_overfitting_diagnosis(report["overfitting_gap"])
 
     # IC diagnosis
     if ic:
-        rank_ic = ic.get("rank_ic", 0)
-        icir = ic.get("icir", 0)
-        if not np.isnan(rank_ic):
-            if rank_ic > 0.05:
-                print("  [OK] Rank IC > 0.05 -- meaningful predictive signal.")
-            elif rank_ic > 0:
-                print("  [WARN] Rank IC > 0 but weak -- marginal signal.")
-            else:
-                print("  [FAIL] Rank IC <= 0 -- no directional signal.")
-        if not np.isnan(icir):
-            if icir > 1.0:
-                print("  [OK] ICIR > 1.0 -- stable signal.")
-            elif icir > 0.3:
-                print("  [WARN] ICIR > 0.3 -- modest stability.")
-            else:
-                print("  [FAIL] ICIR < 0.3 -- signal unstable across sub-periods.")
+        _print_ic_diagnosis(ic)
 
     # Baselines
     print("\n-- Baselines --")
@@ -724,23 +733,7 @@ def _print_regression_report(report: dict[str, Any]) -> None:
         print(f"  ICIR (rolling):        {ic['icir']:.3f}")
         print(f"  IC p-value:            {ic['ic_p_value']:.4f}")
 
-        rank_ic = ic.get("rank_ic", 0)
-        icir = ic.get("icir", 0)
-        print()
-        if not np.isnan(rank_ic):
-            if rank_ic > 0.05:
-                print("  [OK] Rank IC > 0.05 -- meaningful predictive signal.")
-            elif rank_ic > 0:
-                print("  [WARN] Rank IC > 0 but weak -- marginal signal.")
-            else:
-                print("  [FAIL] Rank IC <= 0 -- no directional signal.")
-        if not np.isnan(icir):
-            if icir > 1.0:
-                print("  [OK] ICIR > 1.0 -- stable signal.")
-            elif icir > 0.3:
-                print("  [WARN] ICIR > 0.3 -- modest stability.")
-            else:
-                print("  [FAIL] ICIR < 0.3 -- signal unstable across sub-periods.")
+        _print_ic_diagnosis(ic)
 
     # Feature importance
     if report["feature_importance"]:
@@ -768,32 +761,11 @@ def _print_triple_barrier_report(report: dict[str, Any]) -> None:
         print(f"  ICIR (rolling):        {ic['icir']:.3f}")
 
     # Overfitting diagnosis
-    gap = report["overfitting_gap"]
-    if gap < 0.05:
-        print("\n  [OK] Low overfitting — good generalisation.")
-    elif gap < 0.10:
-        print("\n  [WARN] Moderate overfitting — consider tuning regularisation.")
-    else:
-        print("\n  [FAIL] High overfitting.")
+    _print_overfitting_diagnosis(report["overfitting_gap"])
 
     # IC diagnosis
     if ic:
-        rank_ic = ic.get("rank_ic", 0)
-        icir = ic.get("icir", 0)
-        if not np.isnan(rank_ic):
-            if rank_ic > 0.05:
-                print("  [OK] Rank IC > 0.05 — meaningful predictive signal.")
-            elif rank_ic > 0:
-                print("  [WARN] Rank IC > 0 but weak — marginal signal.")
-            else:
-                print("  [FAIL] Rank IC <= 0 — no directional signal.")
-        if not np.isnan(icir):
-            if icir > 1.0:
-                print("  [OK] ICIR > 1.0 — stable signal.")
-            elif icir > 0.3:
-                print("  [WARN] ICIR > 0.3 — modest stability.")
-            else:
-                print("  [FAIL] ICIR < 0.3 — signal unstable.")
+        _print_ic_diagnosis(ic)
 
     # Label distribution
     ld = report.get("label_distribution", {})
@@ -883,30 +855,6 @@ def compute_factor_ic(
             continue
         sr = spearmanr(valid[feat], valid[return_col])
         result[feat] = float(sr.correlation)  # type: ignore[arg-type]
-    return result
-
-
-def compute_ic_decay(
-    df: pd.DataFrame,
-    feature_cols: list[str],
-    max_lag: int = 20,
-) -> dict[str, list[float]]:
-    """Compute IC decay: rank correlation at successive forward horizons."""
-    result: dict[str, list[float]] = {}
-    close = df["close"]
-    for feat in feature_cols:
-        if feat not in df.columns:
-            continue
-        ics: list[float] = []
-        for lag in range(1, max_lag + 1):
-            fwd_ret = close.shift(-lag) / close - 1.0
-            valid = pd.DataFrame({"f": df[feat], "r": fwd_ret}).dropna()
-            if len(valid) < 30:
-                ics.append(float("nan"))
-            else:
-                r = spearmanr(valid["f"], valid["r"])
-                ics.append(float(r.correlation))  # type: ignore[arg-type]
-        result[feat] = ics
     return result
 
 

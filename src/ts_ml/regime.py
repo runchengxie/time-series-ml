@@ -102,34 +102,3 @@ def classify_regime(
     regime[bear_mask] = -1
 
     return regime
-
-
-def regime_summary(regime: pd.Series) -> dict[str, float]:
-    """Return the fraction of days in each regime."""
-    total = len(regime.dropna())
-    if total == 0:
-        return {}
-    counts = regime.value_counts()
-    return {
-        REGIME_LABELS.get(k, str(k)): float(counts.get(k, 0) or 0) / total
-        for k in [1, 0, -1]
-    }
-
-
-def align_regime_to_df(
-    regime: pd.Series,
-    df: pd.DataFrame,
-    date_col: str = "trade_date",
-) -> pd.Series:
-    """Align regime labels to a DataFrame's trade_date index.
-
-    Returns a Series with the same length as df, where each row gets
-    the regime label for its trade_date. Unmatched dates get NaN.
-    """
-    if date_col not in df.columns or regime.empty:
-        return pd.Series(index=df.index, dtype=float)
-
-    lookup = dict(zip(regime.index, regime.values, strict=False))
-    aligned = df[date_col].map(lambda x: lookup.get(x))  # type: ignore[arg-type]
-    aligned.index = df.index  # type: ignore[assignment]
-    return cast(pd.Series, aligned)

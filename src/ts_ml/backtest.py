@@ -239,7 +239,7 @@ def _compute_backtest_metrics(
     turnover = n_trades / max(n_years, 0.1)
 
     eq_series = pd.Series(equity_curve, index=dates)
-    monthly = eq_series.resample("ME").last().pct_change().dropna()
+    monthly = eq_series.resample("ME").last().pct_change(fill_method=None).dropna()
 
     return {
         "n_trades": n_trades,

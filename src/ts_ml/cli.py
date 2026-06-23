@@ -24,8 +24,7 @@ Supports:
 from __future__ import annotations
 
 import argparse
-import json
-from datetime import datetime
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -49,6 +48,7 @@ from .metrics import (
     run_ablation,
 )
 from .model import compare_models, train_model
+from .persistence import save_multi_symbol_summary, save_results
 from .regime import classify_regime, compute_market_proxy
 from .tracking import end_tracking, log_backtest, log_metrics, start_tracking
 
@@ -94,8 +94,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # Data
     parser.add_argument(
         "--data-lake-root", type=str,
-        default="/home/richard/data/market-data-platform/assets/tushare/"
-                "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data",
+        default=os.environ.get(
+            "TIME_SERIES_ML_DATA_LAKE_ROOT",
+            "/home/richard/data/market-data-platform/assets/tushare/"
+            "a_share/daily/a_share_all_20150101_20260622_shadow_daily_clean/data",
+        ),
     )
     parser.add_argument("--min-listed-days", type=int, default=252)
     parser.add_argument(
@@ -238,9 +241,66 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def parse_args_cli(argv: list[str] | None = None) -> argparse.Namespace:
-    """Alias for parse_args — used externally."""
-    return parse_args(argv)
+# ---------------------------------------------------------------------------
+# Settings factory — eliminates duplicated Settings() construction
+# ---------------------------------------------------------------------------
+
+
+def _settings_for_symbol(
+    symbol: str,
+    base: Settings,
+    *,
+    join_industry: bool | None = None,
+    neutralize_industry: bool | None = None,
+    backtest_enforce_price_limit: bool | None = None,
+    min_daily_amount: float | None = None,
+) -> Settings:
+    """Create a per-symbol Settings by copying relevant fields from a base Settings.
+
+    All model/training params propagate; data/backtest params can be overridden.
+    """
+    return Settings(
+        symbol=symbol,
+        symbols=[symbol],
+        start_date=base.start_date,
+        end_date=base.end_date,
+        data_lake_root=base.data_lake_root,
+        instruments_path=base.instruments_path,
+        join_industry=join_industry if join_industry is not None else base.join_industry,
+        neutralize_industry=(
+            neutralize_industry if neutralize_industry is not None
+            else base.neutralize_industry
+        ),
+        min_listed_days=base.min_listed_days,
+        min_daily_amount=(
+            min_daily_amount if min_daily_amount is not None
+            else base.min_daily_amount
+        ),
+        up_threshold=base.up_threshold,
+        test_size=base.test_size,
+        final_oos_size=base.final_oos_size,
+        cv_splits=base.cv_splits,
+        calibrate=base.calibrate,
+        cv_method=base.cv_method,
+        prob_threshold=base.prob_threshold,
+        xgb_params=dict(base.xgb_params),
+        sample_weight_halflife=base.sample_weight_halflife,
+        train_window_days=base.train_window_days,
+        regression=base.regression,
+        triple_barrier=base.triple_barrier,
+        holding_period=base.holding_period,
+        profit_take=base.profit_take,
+        stop_loss=base.stop_loss,
+        backtest=base.backtest,
+        backtest_cost_bps=base.backtest_cost_bps,
+        backtest_buy_cost_bps=base.backtest_buy_cost_bps,
+        backtest_sell_cost_bps=base.backtest_sell_cost_bps,
+        backtest_enforce_price_limit=(
+            backtest_enforce_price_limit
+            if backtest_enforce_price_limit is not None
+            else base.backtest_enforce_price_limit
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -374,14 +434,8 @@ def _compute_pipeline_regime(
 
     dfs: list[pd.DataFrame] = []
     for sym in symbols:
-        sym_settings = Settings(
-            symbol=sym, symbols=[sym],
-            start_date=settings.start_date, end_date=settings.end_date,
-            data_lake_root=settings.data_lake_root,
-            min_listed_days=settings.min_listed_days,
-            up_threshold=settings.up_threshold,
-            backtest_enforce_price_limit=False,
-            min_daily_amount=0.0,
+        sym_settings = _settings_for_symbol(
+            sym, settings, backtest_enforce_price_limit=False, min_daily_amount=0.0,
         )
         df = _load(sym_settings)
         if df is not None and len(df) >= 50:
@@ -404,12 +458,9 @@ def _compute_single_regime(settings: Settings) -> pd.Series | None:
     """Compute regime from a single stock's own close (fallback)."""
     from .data import load_data as _load
 
-    sym_settings = Settings(
-        symbol=settings.symbol,
-        start_date=settings.start_date, end_date=settings.end_date,
-        data_lake_root=settings.data_lake_root,
-        backtest_enforce_price_limit=False,
-        min_daily_amount=0.0,
+    sym_settings = _settings_for_symbol(
+        settings.symbol, settings,
+        backtest_enforce_price_limit=False, min_daily_amount=0.0,
     )
     df = _load(sym_settings)
     if df is None or len(df) < 60:
@@ -808,17 +859,7 @@ def _run_neutralized_multi(
     print(f"\n[data] Loading {len(symbols)} symbols ...")
     all_dfs: list[tuple[str, pd.DataFrame]] = []
     for i, sym in enumerate(symbols):
-        sym_settings = Settings(
-            symbol=sym, symbols=[sym],
-            start_date=settings.start_date, end_date=settings.end_date,
-            data_lake_root=settings.data_lake_root,
-            instruments_path=settings.instruments_path,
-            join_industry=True,  # required for neutralization
-            min_listed_days=settings.min_listed_days,
-            up_threshold=settings.up_threshold,
-            backtest_enforce_price_limit=settings.backtest_enforce_price_limit,
-            min_daily_amount=settings.min_daily_amount,
-        )
+        sym_settings = _settings_for_symbol(sym, settings, join_industry=True)
         df = _prepare_df(sym_settings, use_lag=getattr(args, "use_lag_features", False))
         if df is not None and len(df) >= 50:
             df["_symbol"] = sym  # tag for splitting later
@@ -873,26 +914,8 @@ def _run_neutralized_multi(
         print(f"  [{report_count + 1}] {sym}")
         print("=" * 60)
 
-        sym_settings = Settings(
-            symbol=sym, symbols=[sym],
-            start_date=settings.start_date, end_date=settings.end_date,
-            data_lake_root=settings.data_lake_root,
-            join_industry=True, neutralize_industry=True,
-            min_listed_days=settings.min_listed_days,
-            up_threshold=settings.up_threshold,
-            test_size=settings.test_size,
-            final_oos_size=settings.final_oos_size,
-            cv_splits=settings.cv_splits,
-            calibrate=settings.calibrate,
-            cv_method=settings.cv_method,
-            prob_threshold=settings.prob_threshold,
-            xgb_params=dict(settings.xgb_params),
-            sample_weight_halflife=settings.sample_weight_halflife,
-            train_window_days=settings.train_window_days,
-            regression=settings.regression,
-            backtest_buy_cost_bps=settings.backtest_buy_cost_bps,
-            backtest_sell_cost_bps=settings.backtest_sell_cost_bps,
-            backtest_enforce_price_limit=settings.backtest_enforce_price_limit,
+        sym_settings = _settings_for_symbol(
+            sym, settings, join_industry=True, neutralize_industry=True,
         )
 
         result = _train_and_evaluate(
@@ -905,141 +928,6 @@ def _run_neutralized_multi(
 
     print(f"\n[multi] Completed: {report_count} symbols evaluated")
     return all_reports
-
-
-# ---------------------------------------------------------------------------
-# Result persistence
-# ---------------------------------------------------------------------------
-
-
-def _save_results(
-    report: dict[str, Any],
-    settings: Settings,
-    args: argparse.Namespace,
-) -> str:
-    """Save summary.json and config.used.yml to artifacts/runs/<timestamp>/.
-
-    Returns the run directory path.
-    """
-    artifacts_root = Path(getattr(args, "artifacts_root", "artifacts"))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    symbol_tag = settings.symbol.replace(".", "_")
-    run_dir = artifacts_root / "runs" / f"{symbol_tag}_{timestamp}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    # Serialize report (filter out non-serializable objects)
-    serializable = _make_serializable(report)
-    summary_path = run_dir / "summary.json"
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(serializable, f, indent=2, default=str, ensure_ascii=False)
-
-    # Save config snapshot
-    config_dict = {
-        "symbol": settings.symbol,
-        "symbols": settings.symbols,
-        "start_date": settings.start_date,
-        "end_date": settings.end_date,
-        "up_threshold": settings.up_threshold,
-        "test_size": settings.test_size,
-        "final_oos_size": settings.final_oos_size,
-        "cv_splits": settings.cv_splits,
-        "purge_days": args.purge_days,
-        "embargo_days": args.embargo_days,
-        "calibrate": settings.calibrate,
-        "cv_method": settings.cv_method,
-        "prob_threshold": settings.prob_threshold,
-        "sample_weight_halflife": settings.sample_weight_halflife,
-        "train_window_days": settings.train_window_days,
-        "regression": settings.regression,
-        "backtest": args.backtest,
-        "backtest_cost_bps": args.backtest_cost_bps,
-        "backtest_buy_cost_bps": settings.backtest_buy_cost_bps,
-        "backtest_sell_cost_bps": settings.backtest_sell_cost_bps,
-        "backtest_enforce_price_limit": settings.backtest_enforce_price_limit,
-        "min_daily_amount": settings.min_daily_amount,
-        "neutralize_industry": settings.neutralize_industry,
-        "compare_models": args.compare_models,
-        "xgb_params": settings.xgb_params,
-    }
-    config_path = run_dir / "config.used.yml"
-    try:
-        import yaml
-        with config_path.open("w", encoding="utf-8") as f:
-            yaml.dump(config_dict, f, default_flow_style=False, allow_unicode=True)
-    except ImportError:
-        with config_path.open("w", encoding="utf-8") as f:
-            json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-    print(f"\n[save] Results saved to {run_dir}/")
-    return str(run_dir)
-
-
-def _make_serializable(obj: Any) -> Any:
-    """Recursively convert numpy types to native Python for JSON serialization."""
-    if isinstance(obj, dict):
-        return {k: _make_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_make_serializable(v) for v in obj]
-    elif isinstance(obj, (np.integer,)):
-        return int(obj)
-    elif isinstance(obj, (np.floating,)):
-        if np.isnan(obj) or np.isinf(obj):
-            return None
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return _make_serializable(obj.tolist())
-    elif isinstance(obj, (pd.Timestamp,)):
-        return obj.isoformat()
-    return obj
-
-
-def _save_multi_symbol_summary(
-    all_reports: list[dict[str, Any]],
-    settings: Settings,
-    args: argparse.Namespace,
-) -> str:
-    """Save a multi-symbol summary CSV."""
-    artifacts_root = Path(getattr(args, "artifacts_root", "artifacts"))
-    run_dir = artifacts_root / "runs"
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rows: list[dict[str, Any]] = []
-    for entry in all_reports:
-        sym = entry["symbol"]
-        r = entry["report"]
-        row: dict[str, Any] = {"symbol": sym}
-        mode = r.get("mode", "classification")
-        if mode == "regression":
-            row["test_rmse"] = r.get("test_rmse")
-            row["test_r2"] = r.get("test_r2")
-        else:
-            row["test_accuracy"] = r.get("test_accuracy")
-            row["roc_auc"] = r.get("roc_auc")
-            row["overfitting_gap"] = r.get("overfitting_gap")
-
-        ic = r.get("ic", {})
-        row["rank_ic"] = ic.get("rank_ic")
-        row["icir"] = ic.get("icir")
-
-        bt = r.get("backtest", {})
-        row["sharpe"] = bt.get("sharpe")
-        row["total_return"] = bt.get("total_return")
-        row["win_rate"] = bt.get("win_rate")
-        row["n_trades"] = bt.get("n_trades")
-
-        rows.append(row)
-
-    df = pd.DataFrame(rows)
-
-    # Sort by rank_ic descending
-    if "rank_ic" in df.columns:
-        df = df.sort_values("rank_ic", ascending=False, na_position="last")
-
-    csv_path = run_dir / f"multi_symbol_summary_{timestamp}.csv"
-    df.to_csv(csv_path, index=False)
-    print(f"[multi] Summary saved to {csv_path}")
-    return str(csv_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1143,28 +1031,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"\n{'=' * 60}")
             print(f"  [{i + 1}/{len(symbols)}] {sym}")
             print("=" * 60)
-            sym_settings = Settings(
-                symbol=sym, symbols=[sym],
-                start_date=settings.start_date, end_date=settings.end_date,
-                data_lake_root=settings.data_lake_root,
-                join_industry=settings.join_industry,
-                min_listed_days=settings.min_listed_days,
-                min_daily_amount=settings.min_daily_amount,
-                up_threshold=settings.up_threshold,
-                test_size=settings.test_size,
-                final_oos_size=settings.final_oos_size,
-                cv_splits=settings.cv_splits,
-                calibrate=settings.calibrate,
-                cv_method=settings.cv_method,
-                prob_threshold=settings.prob_threshold,
-                xgb_params=dict(settings.xgb_params),
-                sample_weight_halflife=settings.sample_weight_halflife,
-                train_window_days=settings.train_window_days,
-                regression=settings.regression,
-                backtest_buy_cost_bps=settings.backtest_buy_cost_bps,
-                backtest_sell_cost_bps=settings.backtest_sell_cost_bps,
-                backtest_enforce_price_limit=settings.backtest_enforce_price_limit,
-            )
+            sym_settings = _settings_for_symbol(sym, settings)
             result = _run_single_experiment(
                 sym_settings, args, purge_days, embargo_days,
                 regime_labels=pipeline_regime,
@@ -1183,11 +1050,23 @@ def main(argv: list[str] | None = None) -> None:
 
     # Save multi-symbol summary
     if len(all_multi_reports) > 1:
-        _save_multi_symbol_summary(all_multi_reports, settings, args)
+        save_multi_symbol_summary(
+            all_multi_reports,
+            artifacts_root=getattr(args, "artifacts_root", "artifacts"),
+        )
 
     # Save results
     if args.save_results and report is not None:
-        _save_results(report, settings, args)
+        save_results(
+            report,
+            settings,
+            artifacts_root=getattr(args, "artifacts_root", "artifacts"),
+            purge_days=purge_days,
+            embargo_days=embargo_days,
+            backtest=args.backtest,
+            backtest_cost_bps=args.backtest_cost_bps,
+            compare_models=args.compare_models,
+        )
 
     end_tracking()
 
