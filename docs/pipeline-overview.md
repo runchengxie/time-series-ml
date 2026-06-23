@@ -8,19 +8,19 @@
 
 ## 一句话地图
 
-`ts-ml` 读入个股 parquet 日线 → 构建技术特征 → 生成次日涨跌标签 → 训练 XGBoost（或多模型对比）→ 评估分类指标和 IC → 可选 walk-forward 回测。
+`ts-ml` 读入个股 parquet 日线 → 构建 30 个技术特征 → 生成次日涨跌标签（二元或 Triple Barrier）→ 训练 XGBoost（或多模型对比）→ 评估分类指标和 IC → 可选 walk-forward 回测。
 
 ```
 parquet 日线
     │
     ▼
-[data.py]         加载数据湖 parquet，join 申万行业分类
+[data.py]         加载数据湖 parquet，join 申万行业分类，标记涨跌停可交易性
     │
     ▼
-[features.py]     自实现技术指标：SMA/RSI/MACD/波动率/量比/蜡烛形态/ATR
+[features.py]     自实现技术指标：30 个特征，分属 10 个特征族
     │
     ▼
-[labels.py]       生成 target：次日涨跌幅 >= threshold → 1，否则 0
+[labels.py]       生成 target：二元标签（次日涨跌幅 >= threshold）或 Triple Barrier 三向标签
     │
     ▼
 [crossval.py]     PurgedTimeSeriesSplit：时序 CV + purge + embargo
@@ -40,14 +40,16 @@ parquet 日线
 
 | 阶段 | 模块 | 关键动作 | 输出 |
 | --- | --- | --- | --- |
-| 数据加载 | `data.py` | 读 parquet，join 申万行业，日期过滤 | DataFrame |
-| 特征工程 | `features.py` | 12 个自实现技术指标 | 含特征列的 DataFrame |
-| 标签构建 | `labels.py` | `target[t] = 1` 当 `ret[t+1] >= threshold` | `target` 列 + `future_return` 列 |
+| 数据加载 | `data.py` | 读 parquet，join 申万行业，日期过滤，涨跌停标记 | DataFrame |
+| 特征工程 | `features.py` | 30 个自实现技术指标 | 含特征列的 DataFrame |
+| 标签构建 | `labels.py` | 二元或 Triple Barrier（AFML）标签 | `target` 列 + `future_return` 列 |
 | 交叉验证 | `crossval.py` | PurgedTimeSeriesSplit（purge + embargo） | CV split indices |
 | 模型训练 | `model.py` | XGBoost / 多模型对比 / 概率校准 | 训练好的模型 + CV stats |
 | 评估 | `metrics.py` | 分类指标 + baselines + IC/ICIR + 因子分析 | 评估报告 dict |
 | 回测 | `backtest.py` | Walk-forward 逐月重训 + TCA | 回测指标 dict |
 | 市场状态 | `regime.py` | MA20/MA60 判定 Bull/Range/Bear | 状态标签 Series |
+| 元标签 | `meta_labeling.py` | 次级模型过滤主模型预测 | 过滤后的信号 |
+| 持久化 | `persistence.py` | summary.json + 多标的 CSV | artifacts/runs/ 目录 |
 
 ## 模块分工
 
@@ -57,23 +59,25 @@ parquet 日线
 | `config.py` | Settings dataclass，不可变配置 | 无 |
 | `config_yaml.py` | YAML 配置文件加载 | PyYAML（可选） |
 | `data.py` | parquet 读取 + instruments join | numpy, pandas, pyarrow |
-| `features.py` | 技术指标计算（零外部依赖） | numpy, pandas |
-| `labels.py` | 次日涨跌标签生成 | pandas |
+| `features.py` | 30 个技术指标（零外部依赖） | numpy, pandas |
+| `labels.py` | 二元 / Triple Barrier 标签生成 | pandas |
 | `crossval.py` | PurgedTimeSeriesSplit | numpy |
 | `model.py` | 训练、多模型对比、概率校准 | sklearn, xgboost |
 | `metrics.py` | 评估指标、baseline、IC/ICIR | sklearn, scipy |
 | `backtest.py` | Walk-forward 回测 + TCA | numpy, pandas, sklearn |
 | `industry.py` | 截面行业中性化 | numpy, pandas, sklearn |
 | `regime.py` | 市场状态分类 | numpy, pandas |
+| `meta_labeling.py` | AFML 元标签 | sklearn |
 | `tracking.py` | MLflow 实验追踪（lazy import） | MLflow（可选） |
+| `persistence.py` | 结果持久化（JSON + CSV） | numpy, pandas |
 
 ## 容易混淆的边界
 
 ### 1. 时序模型 vs 截面模型
 
-time-series-ml 是**时序方向预测**：每只股票独立建模，预测「这只股票明天涨不涨」。
+time-series-ml 是时序方向预测：每只股票独立建模，预测「这只股票明天涨不涨」。
 
-截面策略（如 `a-share-factor-core` / `cross-sectional-trees`）是**横截面排序**：同一交易日比较多只股票，预测「这些股票里谁更好」。
+截面策略（如 `a-share-factor-core` / `cross-sectional-trees`）是横截面排序：同一交易日比较多只股票，预测「这些股票里谁更好」。
 
 ### 2. `--symbol` vs `--symbols`
 

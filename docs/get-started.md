@@ -12,11 +12,24 @@
 - `uv` 包管理器
 - A 股日线 parquet 数据湖（由 `market-data-platform` 生产）
 
-数据湖的默认路径是：
+数据湖默认路径：
 
 ```text
 ~/data/market-data-platform/assets/tushare/a_share/daily/
   a_share_all_20150101_20260622_shadow_daily_clean/data/
+```
+
+如果你的数据在其他位置，通过环境变量指定：
+
+```bash
+export TIME_SERIES_ML_DATA_LAKE_ROOT=/your/path/to/parquet/data
+export TIME_SERIES_ML_INSTRUMENTS_PATH=/your/path/to/instruments.parquet
+```
+
+或者通过 CLI 参数直接指定：
+
+```bash
+ts-ml --symbol 000001.SZ --data-lake-root /path/to/your/data/lake
 ```
 
 如果数据不存在，需要先在 `market-data-platform` 仓库中运行数据管道。
@@ -31,12 +44,6 @@ source .venv/bin/activate
 # 单标的，默认 000001.SZ（平安银行）
 
 ts-ml --symbol 000001.SZ --start-date 20200101
-```
-
-如果你需要指定数据湖路径：
-
-```bash
-ts-ml --symbol 000001.SZ --data-lake-root /path/to/your/data/lake
 ```
 
 ## 运行后检查
