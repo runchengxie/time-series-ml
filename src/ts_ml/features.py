@@ -82,7 +82,7 @@ def compute_candle_features(
     }
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, *, use_lag: bool = False) -> pd.DataFrame:
     """Add technical-indicator columns to a DataFrame with OHLCV columns.
 
     Expects columns: open, high, low, close, vol.
@@ -172,6 +172,19 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     if "volume_ratio" in df.columns:
         df["volume_ratio_raw"] = df["volume_ratio"]
 
+    # --- Lag features (sequence dependency test for LSTM evaluation) ---
+    # Only added when use_lag=True (--use-lag-features).
+    if use_lag:
+        _lag_features = [
+            "SMA20_diff", "RSI_14", "MACD_hist",
+            "Volume_SMA5_ratio", "ATR_14_pct", "HistVol_20", "BB_position",
+        ]
+        _lag_days = [3, 5]
+        for lag in _lag_days:
+            for feat in _lag_features:
+                if feat in df.columns:
+                    df[f"{feat}_lag{lag}"] = df[feat].shift(lag)
+
     return df
 
 
@@ -217,3 +230,13 @@ FEATURE_COLUMNS = [
     "log_pb",
     "log_mcap",
 ]
+
+# Dynamically add lag features
+_lag_base = [
+    "SMA20_diff", "RSI_14", "MACD_hist",
+    "Volume_SMA5_ratio", "ATR_14_pct", "HistVol_20", "BB_position",
+]
+_lag_days = [3, 5]
+for lag in _lag_days:
+    for feat in _lag_base:
+        FEATURE_COLUMNS.append(f"{feat}_lag{lag}")

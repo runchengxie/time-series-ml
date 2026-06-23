@@ -188,6 +188,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Train a secondary model to filter primary model predictions",
     )
 
+    # Lag features
+    parser.add_argument(
+        "--use-lag-features", action="store_true",
+        help="Add t-3 and t-5 lag features for sequence dependency testing",
+    )
+
     # Permutation test
     parser.add_argument(
         "--permutation-test", action="store_true",
@@ -321,13 +327,13 @@ def _print_backtest(bt: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _prepare_df(settings: Settings) -> pd.DataFrame:
+def _prepare_df(settings: Settings, *, use_lag: bool = False) -> pd.DataFrame:
     """Load data, build features, build labels, keep relevant columns."""
     df = load_data(settings)
     if df is None or len(df) < settings.min_listed_days:
         return cast(pd.DataFrame, df)
 
-    df = build_features(df)
+    df = build_features(df, use_lag=use_lag)
     print("[features] Features built.")
     df = build_labels(
         df, threshold=settings.up_threshold,
@@ -714,7 +720,7 @@ def _run_single_experiment(
     regime_labels: pd.Series | None = None,
 ) -> dict[str, Any] | None:
     """Full pipeline for a single symbol: load → prepare → train → eval."""
-    df = _prepare_df(settings)
+    df = _prepare_df(settings, use_lag=getattr(args, "use_lag_features", False))
     if df is None or len(df) < 50:
         return None
 
@@ -813,7 +819,7 @@ def _run_neutralized_multi(
             backtest_enforce_price_limit=settings.backtest_enforce_price_limit,
             min_daily_amount=settings.min_daily_amount,
         )
-        df = _prepare_df(sym_settings)
+        df = _prepare_df(sym_settings, use_lag=getattr(args, "use_lag_features", False))
         if df is not None and len(df) >= 50:
             df["_symbol"] = sym  # tag for splitting later
             all_dfs.append((sym, df))
