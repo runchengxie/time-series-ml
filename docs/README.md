@@ -20,6 +20,7 @@
 | 我想查典型工作流和常见问题 | `docs/runbook.md` |
 | 我想看项目功能边界和能力清单 | `docs/capabilities.md` |
 | 我想看已知局限和测试覆盖缺口 | `docs/limitations.md` |
+| 我想理解模型版图和扩展优先级 | `docs/concepts/model-landscape.md` |
 | 我想改代码、跑测试、提交 PR | `docs/dev.md` |
 
 ## 四条阅读路径
@@ -27,7 +28,7 @@
 1. 我想先跑起来：`docs/get-started.md`
 2. 我想先建立系统心智模型：`docs/pipeline-overview.md` → `docs/methodology.md` → `docs/capabilities.md`
 3. 我想做正式研究：`docs/get-started.md` → `docs/runbook.md` → `docs/validation.md` → `docs/concepts/overfitting-controls.md` → `docs/metrics.md`
-4. 我想查某个细节：`docs/cli.md`、`docs/config.md`、`docs/methodology.md`、`docs/concepts/`
+4. 我想查某个细节：`docs/cli.md`、`docs/config.md`、`docs/methodology.md`、`docs/concepts/`、`docs/concepts/model-landscape.md`
 
 ## 页面分工
 
@@ -35,7 +36,7 @@
 任务路径：`docs/get-started.md`、`docs/runbook.md`
 系统总览：`docs/pipeline-overview.md`、`docs/capabilities.md`
 参考手册：`docs/cli.md`、`docs/config.md`、`docs/methodology.md`、`docs/metrics.md`
-概念解释：`docs/concepts/execution-costs.md`、`docs/concepts/overfitting-controls.md`
+概念解释：`docs/concepts/execution-costs.md`、`docs/concepts/overfitting-controls.md`、`docs/concepts/model-landscape.md`
 验证与局限：`docs/validation.md`、`docs/limitations.md`
 开发：`docs/dev.md`
 
