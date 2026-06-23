@@ -231,12 +231,22 @@ FEATURE_COLUMNS = [
     "log_mcap",
 ]
 
-# Dynamically add lag features
-_lag_base = [
+# Lag features (sequence dependency test for LSTM evaluation).
+# Not included in FEATURE_COLUMNS by default; use get_feature_columns(use_lag=True).
+_LAG_BASE = [
     "SMA20_diff", "RSI_14", "MACD_hist",
     "Volume_SMA5_ratio", "ATR_14_pct", "HistVol_20", "BB_position",
 ]
-_lag_days = [3, 5]
-for lag in _lag_days:
-    for feat in _lag_base:
-        FEATURE_COLUMNS.append(f"{feat}_lag{lag}")
+_LAG_DAYS = [3, 5]
+_LAG_COLUMNS = [
+    f"{feat}_lag{lag}"
+    for lag in _LAG_DAYS
+    for feat in _LAG_BASE
+]
+
+
+def get_feature_columns(*, use_lag: bool = False) -> list[str]:
+    """Return the list of feature columns, optionally including lag features."""
+    if use_lag:
+        return [*FEATURE_COLUMNS, *_LAG_COLUMNS]
+    return list(FEATURE_COLUMNS)

@@ -37,7 +37,7 @@ from .backtest import walk_forward
 from .config import Settings
 from .config_yaml import load_yaml_config
 from .data import load_data
-from .features import FEATURE_COLUMNS, build_features
+from .features import FEATURE_COLUMNS, build_features, get_feature_columns
 from .industry import neutralize_industry
 from .labels import build_labels
 from .metrics import (
@@ -344,7 +344,7 @@ def _prepare_df(settings: Settings, *, use_lag: bool = False) -> pd.DataFrame:
     )
 
     # Select columns and drop NaN
-    keep_cols = [*FEATURE_COLUMNS, "target", "future_return"]
+    keep_cols = [*get_feature_columns(use_lag=use_lag), "target", "future_return"]
     for c in ("trade_date", "close", "industry", "ts_code",
               "is_tradable", "is_tradable_buy", "is_tradable_sell", "amount",
               "turnover_rate", "volume_ratio",
